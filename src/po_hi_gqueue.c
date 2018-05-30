@@ -49,28 +49,106 @@
 #define __PO_HI_GQUEUE_OUT_PORT constant_out_identifier
 /* give a default value to the out port */
 
+/**
+ * Pointer Array containing the whole gqueue.
+ * In fact, the gqueue is divided in multiple gqueues : by task then for each task by ports.
+ * (There is a gqueue for each port of each task)
+ */
 __po_hi_port_t*        __po_hi_gqueues[__PO_HI_NB_TASKS];
+
+/**
+ * Array showing the number of ports for each tasks.
+ */
 __po_hi_port_id_t      __po_hi_gqueues_nb_ports[__PO_HI_NB_TASKS];
+
+/**
+ * Array showing the size of the FIFO for each port of each task, or __PO_HI_GQUEUE_FIFO_OUT if this is an out port.
+ */
 __po_hi_port_id_t*     __po_hi_gqueues_sizes[__PO_HI_NB_TASKS];
+
+/**
+ * Array showing the effective size used for each port (for each task).
+ */
 __po_hi_port_id_t*     __po_hi_gqueues_used_size[__PO_HI_NB_TASKS];
+
+/**
+ * Array showing the offset necessary to add from the beginning of a port gqueue to access the part allowed to reading.
+ * When adding that offset to the beginning of the PORT gqueue, you enter the part of the port gqueue in which the read value get input.
+ */
 __po_hi_port_id_t*     __po_hi_gqueues_offsets[__PO_HI_NB_TASKS];
+
+/**
+ * Array showing the offset necessary to add from the beginning of a port gqueue to access the part allowed to writing.
+ * When adding that offset to the beginning of the PORT gqueue, you enter the part of the port gqueue in which the written value get input.
+ */
 __po_hi_port_id_t*     __po_hi_gqueues_woffsets[__PO_HI_NB_TASKS];
+
+/**
+ * Array showing the number of destinations for each port.
+ */
 __po_hi_port_id_t*     __po_hi_gqueues_n_destinations[__PO_HI_NB_TASKS];
+
+/**
+ * Array showing the destination for each port.
+ */
 __po_hi_port_t**       __po_hi_gqueues_destinations[__PO_HI_NB_TASKS];
+
+/**
+ * Array showing the size of the FIFO gqueue for each task (subdivision by tasks of the whole gqueue).
+ */
 __po_hi_uint32_t       __po_hi_gqueues_total_fifo_size[__PO_HI_NB_TASKS];
+
+/**
+ * Array showing the most recent value added (for each port of each task). 
+ */
 __po_hi_request_t*     __po_hi_gqueues_most_recent_values[__PO_HI_NB_TASKS];
+
+/**
+ * Array showing the offset necessary to add from the beginning of a task gqueue to access a specified port gqueue.
+ * When adding that offset to the beginning of the TASK gqueue, you enter the beginning of the port gqueue.
+ */
 __po_hi_port_id_t*     __po_hi_gqueues_first[__PO_HI_NB_TASKS];
 
+/**
+ * Unused.
+ */
 __po_hi_port_id_t       __po_hi_gqueues_global_size[__PO_HI_NB_TASKS];
+
+/**
+ * Array helping in managing the offsets and woffsets in integers.
+ */
 __po_hi_local_port_t*   __po_hi_gqueues_global_history[__PO_HI_NB_TASKS];
+
+/**
+ * Array in managing the offsets in integers.
+ */
 __po_hi_uint32_t        __po_hi_gqueues_global_history_offset[__PO_HI_NB_TASKS];
+
+/**
+ * Array in managing the woffsets in integers.
+ */
 __po_hi_uint32_t        __po_hi_gqueues_global_history_woffset[__PO_HI_NB_TASKS];
 
+/**
+ * Array showing whether the queue of a specified port of a task is empty (1) or not (0).
+ */
 __po_hi_port_id_t*       __po_hi_gqueues_port_is_empty[__PO_HI_NB_TASKS];
+
+/**
+ * Array showing whether the global queue of a task is empty (1) or not (0).
+ */
 __po_hi_port_id_t        __po_hi_gqueues_queue_is_empty[__PO_HI_NB_TASKS];
+
+/**
+ * Array counting how many ports gqueue of a specified task are empty.
+ * If the number of empty ports (n_empty) is equal to the number of ports (nb_ports),
+ * then the queue is declared empty in the array  __po_hi_gqueues_queue_is_empty.
+ */
 __po_hi_port_id_t        __po_hi_gqueues_n_empty[__PO_HI_NB_TASKS];
 
-
+/**
+ * Array containing the semaphores for each tasks.
+ */
 __po_hi_sem_t            __po_hi_gqueues_semaphores[__PO_HI_NB_TASKS];
 
 
