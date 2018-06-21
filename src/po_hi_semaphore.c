@@ -269,7 +269,7 @@ if (rtems_semaphore_release (sem->rtems_sem) != RTEMS_SUCCESSFUL)
 int __po_hi_sem_init_gqueue(__po_hi_sem_t array[__PO_HI_NB_TASKS], __po_hi_task_id id)
 {
   int result = __po_hi_sem_init(&array[id], __PO_HI_MUTEX_REGULAR, 0, id);
-  __DEBUGMSG("SEM_INIT task number : %d, result : %d\n", id, result);
+  __DEBUGMSG("\nSEM_INIT task number : %d, result : %d\n", id, result);
 
 
 #if defined (POSIX) || defined (XENO_POSIX)

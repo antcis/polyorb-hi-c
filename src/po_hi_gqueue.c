@@ -54,7 +54,7 @@
  * In fact, the gqueue is divided in multiple gqueues : by task then for each task by ports.
  * (There is a gqueue for each port of each task)
  */
-__po_hi_port_t*        __po_hi_gqueues[__PO_HI_NB_TASKS];
+__po_hi_request_t*       __po_hi_gqueues[__PO_HI_NB_TASKS];
 
 /**
  * Array showing the number of ports for each tasks.
@@ -155,7 +155,7 @@ __po_hi_sem_t            __po_hi_gqueues_semaphores[__PO_HI_NB_TASKS];
 
 void __po_hi_gqueue_init (__po_hi_task_id       id,
                           __po_hi_port_id_t     nb_ports,
-                          __po_hi_port_t        queue[],
+                          __po_hi_request_t     queue[],
                           __po_hi_port_id_t     sizes[],
                           __po_hi_port_id_t     first[],
                           __po_hi_port_id_t     offsets[],
@@ -205,7 +205,6 @@ void __po_hi_gqueue_init (__po_hi_task_id       id,
    for (tmp=0;tmp<nb_ports;tmp++)
    {
       __po_hi_gqueues_used_size[id][tmp] = 0;
-
       if ( (sizes[tmp] != __PO_HI_GQUEUE_FIFO_INDATA)
             && (sizes[tmp] != __PO_HI_GQUEUE_FIFO_OUT))
       {
@@ -232,8 +231,36 @@ void __po_hi_gqueue_init (__po_hi_task_id       id,
    }
    __DEBUGMSG(" ... done\n");
 #endif
-}
 
+  __PO_HI_DEBUG_DEBUG("Initialize global queue for task %d , first = %d, history_offset = %d, history_woffset = %d, fifo size = %d, gqueue_id adress = %d\n\n", id, __po_hi_gqueues_first[id],__po_hi_gqueues_global_history_offset[id],__po_hi_gqueues_global_history_woffset[id], __po_hi_gqueues_total_fifo_size[id],__po_hi_gqueues[id] );
+#if defined __PO_HI_COND
+   __DEBUGMSG("\nInitialization parameter");
+   assert(__po_hi_gqueues_global_history_woffset[id] == 0);
+   assert(__po_hi_gqueues_global_history_offset[id] == 0);
+   assert(__po_hi_gqueues_n_empty[id] == nb_ports);
+   assert(__po_hi_gqueues[id] == queue);
+   assert(__po_hi_gqueues_most_recent_values[id] == recent);
+   assert(__po_hi_gqueues_global_history[id] == history);
+   assert(__po_hi_gqueues_woffsets[id] == woffsets);
+   assert(__po_hi_gqueues_port_is_empty[id] == empties);
+   assert(__po_hi_gqueues_nb_ports[id] == nb_ports);
+   assert(__po_hi_gqueues_sizes[id] == sizes);
+   assert(__po_hi_gqueues_first[id] == first);
+   assert(__po_hi_gqueues_used_size[id] == used_size);
+   assert(__po_hi_gqueues_offsets[id]           == offsets);
+   assert(__po_hi_gqueues_n_destinations[id]    == n_dest);
+   assert(__po_hi_gqueues_destinations[id]      == destinations);
+   assert(__po_hi_gqueues_total_fifo_size[id]   == total_fifo_size);
+   assert(__po_hi_gqueues_queue_is_empty[id] = 1);
+   for (__po_hi_port_id_t i = 0; i < nb_ports; i++){
+      assert(__po_hi_gqueues_used_size[id][i] == 0);
+      assert(__po_hi_gqueues_most_recent_values[id][i].port == __PO_HI_GQUEUE_INVALID_PORT);
+      if (i > 0){ 
+         //assert(__po_hi_gqueues_first[id][i] >= 0);
+      }
+   }
+#endif
+}
 
 void __po_hi_gqueue_store_out (__po_hi_task_id id,
                                __po_hi_local_port_t port,
@@ -244,9 +271,10 @@ void __po_hi_gqueue_store_out (__po_hi_task_id id,
    request->port = __PO_HI_GQUEUE_OUT_PORT;
    ptr = &__po_hi_gqueues_most_recent_values[id][port];
    memcpy (ptr, request, sizeof (__po_hi_request_t));
-   __PO_HI_DEBUG_DEBUG ("__po_hi_gqueue_store_out() from task %d on port %d\n", id, port);
+   __PO_HI_DEBUG_DEBUG ("\n__Po_hi_gqueue_store_out() from task %d on port %d\n", id, port);
 
 #if defined (MONITORING)
+   __DEBUGMSG("\nThe last value is the request to be stored");
    record_event(ANY, STORE_OUT, id, invalid_port_t, invalid_port_t, port, invalid_local_port_t, request);
 #endif
 
@@ -256,9 +284,16 @@ __po_hi_port_id_t __po_hi_gqueue_store_in (__po_hi_task_id id,
                                          __po_hi_local_port_t port,
                                          __po_hi_request_t* request)
 {
+#ifdef __PO_HI_COND
+  __po_hi_port_id_t init_woffset = __po_hi_gqueues_woffsets[id][port];
+  __po_hi_uint32_t init_history_woffset = __po_hi_gqueues_global_history_woffset[id];
+  __po_hi_port_id_t init_used_size = __po_hi_gqueues_used_size[id][port];
+  __po_hi_port_id_t is_empty = __po_hi_gqueues_port_is_empty[id][port];
+  __po_hi_port_id_t nb_empty =  __po_hi_gqueues_n_empty[id];
+#endif
+
    __po_hi_request_t* ptr;
    __po_hi_request_t* tmp;
-
 
    ptr = &__po_hi_gqueues_most_recent_values[id][port];
 #ifdef __PO_HI_DEBUG
@@ -270,10 +305,10 @@ __po_hi_port_id_t __po_hi_gqueue_store_in (__po_hi_task_id id,
 
 
   /* Locking only a mutex */
+  __PO_HI_DEBUG_DEBUG ("\nWaiting on Store_in on task %d, port = %d, size of port = %d\n", id, port,__po_hi_gqueue_get_port_size(id, port)); 
   int result = __po_hi_sem_mutex_wait_gqueue(__po_hi_gqueues_semaphores,id);
   __DEBUGMSG("GQUEUE_SEM_MUTEX_WAIT on task %d result = %d\n", id, result);
   assert(result == __PO_HI_SUCCESS);
-
 
    if (__po_hi_gqueue_get_port_size(id,port) == __PO_HI_GQUEUE_FIFO_INDATA)
    {
@@ -290,26 +325,34 @@ __po_hi_port_id_t __po_hi_gqueue_store_in (__po_hi_task_id id,
         __DEBUGMSG("GQUEUE_SEM_MTUEX_RELEASE %d %d\n", id, res);
         assert(res == __PO_HI_SUCCESS);
 
-
         __PO_HI_DEBUG_CRITICAL ("[GQUEUE] QUEUE FULL, task-id=%d, port=%d\n", id, port);
 
         __DEBUGMSG ("[GQUEUE] Semaphore released (id=%d)\n", id);
         return __PO_HI_ERROR_QUEUE_FULL;
       }
 
+    __PO_HI_DEBUG_DEBUG("\nBefore store_in for task-id %d , port %d, offset = %d, woffset = %d, history_offset = %d, history_woffset = %d, port size = %d, fifo size = %d, gqueue id adress = %d,\n\n", id, port, __po_hi_gqueues_offsets[id][port], __po_hi_gqueues_woffsets[id][port],__po_hi_gqueues_global_history_offset[id],__po_hi_gqueues_global_history_woffset[id], __po_hi_gqueues_sizes[id][port], __po_hi_gqueues_total_fifo_size[id], __po_hi_gqueues[id]); 
+
+      /* The program ensures to write the information at the right place in the buffer.
+       * The right first offset has to be applied so that the right port is chosen.
+       * The right woffset (writing_offset) has to be applied not to erase fresh information.
+       */
       __po_hi_uint32_t   size;
-      tmp = (__po_hi_request_t*) &__po_hi_gqueues[id][port];
+      tmp =  __po_hi_gqueues[id];
       size = __po_hi_gqueues_woffsets[id][port] + __po_hi_gqueues_first[id][port];
 
       tmp = tmp + size;
+      __PO_HI_DEBUG_DEBUG(" Store_in first + woffsets = %d, first = %d, gqueue_id adress = %d, tmp (adress + woffset + first)= %d,\n\n", __po_hi_gqueues_first[id][port] + __po_hi_gqueues_woffsets[id][port],__po_hi_gqueues_first[id][port],__po_hi_gqueues[id], tmp);
 
       memcpy (tmp , request, sizeof (__po_hi_request_t));
 
       __po_hi_gqueues_woffsets[id][port] =  (__po_hi_gqueues_woffsets[id][port] + 1 ) % __po_hi_gqueues_sizes[id][port];
-
+       __PO_HI_DEBUG_DEBUG ("\nBefore used_size ++, Store_in for task = %d, __po_hi_gqueues_used_size[id][port] = %d\n", id, __po_hi_gqueues_used_size[id][port]); 
       __po_hi_gqueues_used_size[id][port]++;
+      __PO_HI_DEBUG_DEBUG ("\nAfter used_size ++ , Store_in for task = %d, __po_hi_gqueues_used_size[id][port] = %d\n",id,  __po_hi_gqueues_used_size[id][port]);
       __PO_HI_INSTRUMENTATION_VCD_WRITE("r%d p%d.%d\n", __po_hi_gqueue_used_size(id,port), id, port);
-
+     
+     /* The port where information has been written is stored */
       __po_hi_gqueues_global_history[id][__po_hi_gqueues_global_history_woffset[id]] = port;
       __po_hi_gqueues_global_history_woffset[id] = (__po_hi_gqueues_global_history_woffset[id] + 1 ) % __po_hi_gqueues_total_fifo_size[id];
 
@@ -320,12 +363,41 @@ __po_hi_port_id_t __po_hi_gqueue_store_in (__po_hi_task_id id,
       }
       __po_hi_gqueues_queue_is_empty[id] = 0;
    }
+   
+   __PO_HI_DEBUG_DEBUG("\nAfter store_in for task-id %d , port %d, offset = %d, woffset = %d, history_offset = %d, history_woffset = %d, port size = %d, fifo size = %d, gqueue_id adress= %d, \n\n", id, port,  __po_hi_gqueues_offsets[id][port], __po_hi_gqueues_woffsets[id][port],__po_hi_gqueues_global_history_offset[id],__po_hi_gqueues_global_history_woffset[id], __po_hi_gqueues_sizes[id][port], __po_hi_gqueues_total_fifo_size[id], __po_hi_gqueues[id]);
+
   /* Releasing a complete semaphore */
   int rel = __po_hi_sem_release_gqueue(__po_hi_gqueues_semaphores,id);
   __DEBUGMSG("GQUEUE_SEM_RELEASE %d %d\n", id, rel);
   assert(rel == __PO_HI_SUCCESS);
 
   __DEBUGMSG ("[GQUEUE] store_in completed\n");
+
+#ifdef __PO_HI_COND
+  /* The port length is superior to 1 */
+  if ((__po_hi_gqueue_get_port_size(id,port) != __PO_HI_GQUEUE_FIFO_INDATA)&&(init_used_size != __po_hi_gqueue_get_port_size(id,port))){
+    __DEBUGMSG("\nThe woffset should be incremented by one and stay inferior to the port size");
+    assert(__po_hi_gqueues_woffsets[id][port] == (init_woffset + 1)% __po_hi_gqueues_sizes[id][port]);
+    assert(__po_hi_gqueues_woffsets[id][port] < __po_hi_gqueues_sizes[id][port]);
+    __DEBUGMSG("\nThe effective port size used should be incremented by one");
+    assert (__po_hi_gqueues_used_size[id][port] == init_used_size +1);
+    __DEBUGMSG("\nThe port array is filled by the right port so that the reading is done at the right port");
+    assert (__po_hi_gqueues_global_history[id][init_history_woffset] == port);
+    __DEBUGMSG("The woffset_index should then be incremented by one and stay inferior to the fifo size");
+    assert(__po_hi_gqueues_global_history_woffset[id] == (init_history_woffset + 1)% __po_hi_gqueues_total_fifo_size[id]);
+    assert(__po_hi_gqueues_global_history_woffset[id] < __po_hi_gqueues_total_fifo_size[id]);
+    __DEBUGMSG("\nIf this port queue was empty, the number of empty port is reduced by 1");
+    /* The port was empty */
+    if (is_empty == 1){ 
+      assert(__po_hi_gqueues_n_empty[id] == nb_empty - 1);
+    }
+    __DEBUGMSG("\nThis port queue must be considered not empty ");
+    assert (__po_hi_gqueues_port_is_empty[id][port] == 0);
+    __DEBUGMSG("\nThe task queue must be considered not empty ");
+    assert (__po_hi_gqueues_queue_is_empty[id] == 0);
+  }
+#endif
+
   return __PO_HI_SUCCESS;
 }
 
@@ -361,6 +433,10 @@ void __po_hi_gqueue_wait_for_incoming_event (__po_hi_task_id id,
   __DEBUGMSG("GQUEUE_SEM_MTUEX_RELEASE %d %d\n", id, res);
   assert(res == __PO_HI_SUCCESS);
 
+#ifdef __PO_HI_COND
+  __DEBUGMSG("\nThe task queue must be considered not empty ");
+  assert (*port == __po_hi_gqueues_global_history[id][__po_hi_gqueues_global_history_offset[id]]);
+#endif
 }
 
 
@@ -389,6 +465,7 @@ int __po_hi_gqueue_get_value (__po_hi_task_id      id,
    DWORD ret;
 #endif
 
+  __PO_HI_DEBUG_DEBUG("before get_value for task-id %d , port = %d, offset = %d, woffset = %d, history_offset = %d, history_woffset = %d, port size = %d , fifo size = %d, gqueues_id adress = %d, \n\n", id, port, __po_hi_gqueues_offsets[id][port], __po_hi_gqueues_woffsets[id][port],__po_hi_gqueues_global_history_offset[id],__po_hi_gqueues_global_history_woffset[id], __po_hi_gqueues_sizes[id][port], __po_hi_gqueues_total_fifo_size[id], __po_hi_gqueues[id]); 
 
    ptr = &__po_hi_gqueues_most_recent_values[id][port];
 
@@ -411,7 +488,7 @@ int __po_hi_gqueue_get_value (__po_hi_task_id      id,
     * the thread.
     */
    if (__po_hi_gqueue_get_port_size(id,port) != __PO_HI_GQUEUE_FIFO_INDATA)
-   {
+   {  
       while (__po_hi_gqueues_port_is_empty[id][port] == 1)
       {
         /* Telling the semaphore to wait with putting its condvar on wait mode */
@@ -420,9 +497,6 @@ int __po_hi_gqueue_get_value (__po_hi_task_id      id,
         assert(res_sem == __PO_HI_SUCCESS);
       }
    }
-   /*
-    * The request is set up
-    */
    if (__po_hi_gqueue_used_size(id,port) == 0)
    {
       memcpy (request, ptr, sizeof (__po_hi_request_t));
@@ -430,7 +504,13 @@ int __po_hi_gqueue_get_value (__po_hi_task_id      id,
    }
    else
    {
-      ptr = ((__po_hi_request_t *) &__po_hi_gqueues[id][port]) +  __po_hi_gqueues_first[id][port] + __po_hi_gqueues_offsets[id][port];
+      /* The program ensures to read the information at the right place in the buffer.
+       * The right first offset has to be applied so that the right port is chosen.
+       * The right offset (read_offset) has to be applied not to erase fresh information.
+       */
+
+      ptr = (__po_hi_gqueues[id]) +  __po_hi_gqueues_first[id][port] + __po_hi_gqueues_offsets[id][port];
+      __PO_HI_DEBUG_DEBUG("Get_value if port not empty first + offsets = %d, gqueue_id adress =  %d, first = %d, ptr (adress + first +offset) = %d, \n\n",  __po_hi_gqueues_first[id][port] + __po_hi_gqueues_offsets[id][port],__po_hi_gqueues[id], __po_hi_gqueues_first[id][port], ptr);
       memcpy (request, ptr, sizeof (__po_hi_request_t));
    }
 
@@ -445,18 +525,22 @@ int __po_hi_gqueue_get_value (__po_hi_task_id      id,
   __DEBUGMSG("GQUEUE_SEM_MUTEX_RELEASE %d %d\n", id, res);
   assert(res == __PO_HI_SUCCESS);
 
-   return 0;
+   __PO_HI_DEBUG_DEBUG("After get_value for task-id %d , port = %d, offset = %d, woffset = %d, history_offset = %d, history_woffset = %d, port size = %d, fifo size = %d, gqueues adress = %d \n\n", id, port, __po_hi_gqueues_offsets[id][port], __po_hi_gqueues_woffsets[id][port],__po_hi_gqueues_global_history_offset[id],__po_hi_gqueues_global_history_woffset[id], __po_hi_gqueues_sizes[id][port], __po_hi_gqueues_total_fifo_size[id], __po_hi_gqueues[id]);
+  return 0;
 }
 
 int __po_hi_gqueue_next_value (__po_hi_task_id id, __po_hi_local_port_t port)
 {
-#ifdef __PO_HI_RTEMS_CLASSIC_API
-   rtems_status_code ret;
+
+#ifdef __PO_HI_COND
+  __po_hi_port_id_t init_offset = __po_hi_gqueues_offsets[id][port];
+  __po_hi_uint32_t init_history_offset = __po_hi_gqueues_global_history_offset[id];
+  __po_hi_port_id_t init_used_size = __po_hi_gqueues_used_size[id][port];
+  __po_hi_port_id_t nb_empty =  __po_hi_gqueues_n_empty[id];
 #endif
 
    /* incomplete semantics, should discriminate and report whether
       there is a next value or not */
-
    /* XXX change and use assert ? */
    if (__po_hi_gqueue_get_port_size(id,port) == __PO_HI_GQUEUE_FIFO_INDATA)
    {
@@ -464,16 +548,19 @@ int __po_hi_gqueue_next_value (__po_hi_task_id id, __po_hi_local_port_t port)
    }
 
  /* Locking a mutex */
+  __PO_HI_DEBUG_DEBUG ("\nWaiting on next_value on task %d, port = %d, size of port = %d\n", id, port,__po_hi_gqueue_get_port_size(id, port));
   int result = __po_hi_sem_mutex_wait_gqueue(__po_hi_gqueues_semaphores,id);
   __DEBUGMSG("GQUEUE_SEM_MUTEX_WAIT %d %d\n", id, result);
   assert(result == __PO_HI_SUCCESS);
 
+  __PO_HI_DEBUG_DEBUG("\nBefore next_value for task-id %d , offset = %d, woffset = %d, history_offset = %d, history_woffset = %d, port_size = %d, fifo size = %d, gqueues adress = %d, \n\n", id, __po_hi_gqueues_offsets[id][port], __po_hi_gqueues_woffsets[id][port],__po_hi_gqueues_global_history_offset[id],__po_hi_gqueues_global_history_woffset[id], __po_hi_gqueues_sizes[id][port], __po_hi_gqueues_total_fifo_size[id], __po_hi_gqueues[id]);
+
    __po_hi_gqueues_offsets[id][port] =
       (__po_hi_gqueues_offsets[id][port] + 1)
       % __po_hi_gqueues_sizes[id][port];
-
+   __PO_HI_DEBUG_DEBUG ("\nBefore -- on size, Next_value for task id = %d, __po_hi_gqueues_used_size[id][port] = %d\n",id, __po_hi_gqueues_used_size[id][port]);
    __po_hi_gqueues_used_size[id][port]--;
-
+   __PO_HI_DEBUG_DEBUG ("\nAfter -- on size , Next_value for task id = %d, __po_hi_gqueues_used_size[id][port] = %d\n",id, __po_hi_gqueues_used_size[id][port]);
    __PO_HI_INSTRUMENTATION_VCD_WRITE("r%d p%d.%d\n", __po_hi_gqueue_used_size(id,port), id, port);
 
    if (__po_hi_gqueue_used_size(id,port) == 0)
@@ -491,12 +578,37 @@ int __po_hi_gqueue_next_value (__po_hi_task_id id, __po_hi_local_port_t port)
       (__po_hi_gqueues_global_history_offset[id] + 1)
       % __po_hi_gqueues_total_fifo_size[id];
 
+  __PO_HI_DEBUG_DEBUG("\nAfter next_value for task-id %d , offset = %d, woffset = %d, history_offset = %d, history_woffset = %d , port size = %d, fifo size = %d, gqueue = %d \n\n", id, __po_hi_gqueues_offsets[id][port], __po_hi_gqueues_woffsets[id][port],__po_hi_gqueues_global_history_offset[id],__po_hi_gqueues_global_history_woffset[id], __po_hi_gqueues_sizes[id][port], __po_hi_gqueues_total_fifo_size[id], __po_hi_gqueues[id]);
 
 /* Releasing a mutex*/
   int res = __po_hi_sem_mutex_release_gqueue(__po_hi_gqueues_semaphores,id);
   __DEBUGMSG("GQUEUE_SEM_MUTEX_RELEASE %d %d\n", id, res);
   assert(res == __PO_HI_SUCCESS);
 
+#ifdef __PO_HI_COND
+  /* The port length is superior to 1 */
+  if ((__po_hi_gqueue_get_port_size(id,port) != __PO_HI_GQUEUE_FIFO_INDATA)){
+    __DEBUGMSG("\nThe woffset should be incremented by one");
+    assert(__po_hi_gqueues_offsets[id][port] == (init_offset + 1)% __po_hi_gqueues_sizes[id][port]);
+    assert(__po_hi_gqueues_offsets[id][port] < __po_hi_gqueues_sizes[id][port]);
+    __DEBUGMSG("\nThe effective port size used should be decremented by one");
+    assert (__po_hi_gqueues_used_size[id][port] == init_used_size -1);
+    __DEBUGMSG("The offset_index should then be incremented by one");
+    assert(__po_hi_gqueues_global_history_offset[id] == (init_history_offset + 1)% __po_hi_gqueues_total_fifo_size[id]);
+    assert(__po_hi_gqueues_global_history_offset[id] < __po_hi_gqueues_total_fifo_size[id]);
+    __DEBUGMSG("\nIf this port queue was empty, the number of empty port is reduced by 1");
+    /* If the port is now empty */
+    if (__po_hi_gqueue_used_size(id,port) == 0){ 
+      assert(__po_hi_gqueues_n_empty[id] == nb_empty + 1);
+      __DEBUGMSG("\nThis port queue must be considered empty ");
+      assert(__po_hi_gqueues_port_is_empty[id][port] == 1);
+    }
+    if (__po_hi_gqueues_n_empty[id] == __po_hi_gqueues_nb_ports[id])
+   {
+      assert(__po_hi_gqueues_queue_is_empty[id] == 1);
+   }
+  }
+#endif
   return __PO_HI_SUCCESS;
 }
 

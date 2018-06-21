@@ -75,6 +75,7 @@ int __po_hi_transport_send (__po_hi_task_id id, __po_hi_port_t port)
    __po_hi_uint8_t       i;
    __po_hi_local_port_t  local_port;
    __po_hi_port_t        destination_port;
+   __po_hi_local_port_t  destination_port_local;
    __po_hi_entity_t      destination_entity;
 
    local_port  = __po_hi_get_local_port_from_global_port (port);
@@ -88,7 +89,7 @@ int __po_hi_transport_send (__po_hi_task_id id, __po_hi_port_t port)
 
    ndest          = __po_hi_gqueue_get_destinations_number (id, local_port);
    assert(ndest);
-   __PO_HI_DEBUG_DEBUG ("Send value, emitter task %d, emitter port %d, emitter entity %d, destination ports :\n", id,  port, __po_hi_port_global_to_entity[port]);
+   __PO_HI_DEBUG_DEBUG ("\nSend value, emitter task %d, emitter port global %d, emitter port local %d, emitter entity %d, destination ports global :", id,  port, local_port, __po_hi_port_global_to_entity[port]);
 
 #if __PO_HI_DEBUG_LEVEL >= __PO_HI_DEBUG_LEVEL_INFO
    __DEBUGMSG ("Packet to send: |");
@@ -111,9 +112,10 @@ int __po_hi_transport_send (__po_hi_task_id id, __po_hi_port_t port)
    for (i=0 ; i < __po_hi_gqueue_get_destinations_number (id, local_port) ; i++)
    {
       destination_port     = __po_hi_gqueue_get_destination (id, local_port, i);
+      destination_port_local  = __po_hi_get_local_port_from_global_port (destination_port);
       destination_entity   = __po_hi_get_entity_from_global_port (destination_port);
       assert(destination_entity != -1);
-      __PO_HI_DEBUG_DEBUG ("\t%d (entity=%d)", destination_port, destination_entity);
+      __PO_HI_DEBUG_DEBUG ("\t%d, destination port local = %d, (entity=%d)", destination_port, destination_port_local, destination_entity);
 
       request->port = destination_port;
 

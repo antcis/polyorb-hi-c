@@ -48,7 +48,7 @@
  */
 void __po_hi_gqueue_init (__po_hi_task_id       id,
 			  __po_hi_port_id_t     nb_ports,
-			  __po_hi_port_t        queue[],
+			  __po_hi_request_t     queue[],
 			  __po_hi_port_id_t     sizes[],
 			  __po_hi_port_id_t     first[],
 			  __po_hi_port_id_t     offsets[],
@@ -65,9 +65,11 @@ void __po_hi_gqueue_init (__po_hi_task_id       id,
 
 /**
  * \brief Store a value for an OUT port.
+ * A store_out must be followed by a transport_send/send_output so that the value stored out is not crushed
+ * by a following one.
  * 
  * \param id task-id which owns the global queue.
- * \param port port that store the value (local).
+ * \param port port that stores the value (local).
  * \param request pointer towards the request to store in the queue.
  */
 void __po_hi_gqueue_store_out (__po_hi_task_id id,
